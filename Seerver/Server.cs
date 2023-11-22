@@ -113,25 +113,13 @@ namespace Project
             using (MemoryStream ms = new MemoryStream()) {
                 Console.WriteLine("USING MEMORY STREAM");
                 Task<int> readTask = stream.ReadAsync(buffer, 0, buffer.Length);
-                if (await Task.WhenAny(readTask, Task.Delay(5000)) == readTask) {
-                    // readTask completed within timeout
                     bytesRead = readTask.Result;
                     while (bytesRead > 0) {
                         Console.WriteLine("ENTERED WHILE LOOP");
                         ms.Write(buffer, 0, bytesRead);
                         readTask = stream.ReadAsync(buffer, 0, buffer.Length);
-                        if (await Task.WhenAny(readTask, Task.Delay(5000)) == readTask) {
-                            // readTask completed within timeout
-                            bytesRead = readTask.Result;
-                        } else {
-                            // timeout
-                            break;
                         }
                     }
-                } else {
-                    // timeout
-                    bytesRead = 0;
-                }
                 Console.WriteLine("EXITED WHILE LOOP");
                 string json = Encoding.UTF8.GetString(ms.ToArray());
                 var data = JsonConvert.DeserializeObject<T>(json, settings);
