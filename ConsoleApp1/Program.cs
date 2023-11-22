@@ -361,9 +361,9 @@ namespace Battleship {
             using (StreamWriter writer = new StreamWriter(stream, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false), 8192, leaveOpen: true)) {
                 Console.WriteLine("USING STREAMWRITER");
                 string json = JsonConvert.SerializeObject(data, settings);
-                var buffer = Encoding.UTF8.GetBytes(json);
-                Console.WriteLine("CREATED BUFFER");
-                await stream.WriteAsync(buffer, 0, buffer.Length);
+                await writer.WriteAsync(json);
+                await writer.WriteAsync("\n\n"); // Assuming "\n\n" is the delimiter
+                await writer.FlushAsync();
                 Console.WriteLine("AWAITED STREAM WRITE ASYNC");
             }
             Console.WriteLine("EXITED USING STATEMENT");
@@ -377,7 +377,13 @@ namespace Battleship {
                 int charsRead;
 
                 while ((charsRead = await reader.ReadAsync(buffer, 0, buffer.Length)) > 0) {
-                    builder.Append(buffer, 0, charsRead);
+                    string receivedData = new string(buffer, 0, charsRead);
+                    int delimiterIndex = receivedData.IndexOf("\n\n"); // Assuming "\n\n" is the delimiter
+                    if (delimiterIndex >= 0) {
+                        builder.Append(receivedData, 0, delimiterIndex);
+                        break;
+                    }
+                    builder.Append(receivedData);
                 }
 
                 string completeJson = builder.ToString();
@@ -429,8 +435,9 @@ namespace Battleship {
                 int boardSize = await ReceiveIntData(stream);
                 await Board.InitializeBoards(boardSize);
 
-                await SendData(stream, Board.BlueBoard);
                 Board.RedBoard = await ReceiveData<ShipNode[,]>(stream);
+                await SendData(stream, Board.BlueBoard);
+
             }
 
             while (true) {

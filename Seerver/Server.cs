@@ -8,26 +8,21 @@ using System.Threading.Tasks;
 using Battleship;
 using Newtonsoft.Json; // You need to have Newtonsoft.Json (JSON.NET) installed
 
-namespace Project
-{
-    class Server
-    {
-        static JsonSerializerSettings settings = new JsonSerializerSettings
-        {
+namespace Project {
+    class Server {
+        static JsonSerializerSettings settings = new JsonSerializerSettings {
             Formatting = Formatting.Indented,
             NullValueHandling = NullValueHandling.Include
         };
-        static readonly string delimiter = "<EOF>";
 
         static void Main(string[] args) {
             MainAsync(args).GetAwaiter().GetResult();
         }
 
-        static async Task MainAsync(string[] args)
-        {
+        static async Task MainAsync(string[] args) {
             int port = 12345; // Port number for the server
             //get this pc's IPv4
-            IPAddress ipAddress = Array.FindLast(Dns.GetHostEntry(string.Empty).AddressList, 
+            IPAddress ipAddress = Array.FindLast(Dns.GetHostEntry(string.Empty).AddressList,
                 a => a.AddressFamily == AddressFamily.InterNetwork);
             Console.WriteLine(ipAddress);
 
@@ -39,15 +34,11 @@ namespace Project
             TcpClient clientA = null;
             TcpClient clientB = null;
 
-            while (true)
-            {
-                if (clientA == null)
-                {
+            while (true) {
+                if (clientA == null) {
                     clientA = listener.AcceptTcpClient();
                     Console.WriteLine("Client A connected.");
-                }
-                else if (clientB == null)
-                {
+                } else if (clientB == null) {
                     clientB = listener.AcceptTcpClient();
                     Console.WriteLine("Client B connected.");
 
@@ -55,8 +46,7 @@ namespace Project
                     await InitializeGame(clientA, clientB);
                 }
 
-                if (clientA != null && clientB != null)
-                {
+                if (clientA != null && clientB != null) {
                     clientA.Close();
                     clientB.Close();
                     clientA = null;
@@ -65,8 +55,7 @@ namespace Project
             }
         }
 
-        static async Task<int> InitializeGame(TcpClient clientA, TcpClient clientB)
-        {
+        static async Task<int> InitializeGame(TcpClient clientA, TcpClient clientB) {
             Console.WriteLine("Started Initializing!");
             // Receive board and list for Client A
             int boardSize = await ReceiveIntData(clientA);
@@ -106,35 +95,53 @@ namespace Project
         static async Task<T> ReceiveData<T>(TcpClient client) {
             Console.WriteLine("RECEIVING");
             NetworkStream stream = client.GetStream();
-            byte[] buffer = new byte[8192];
-            int bytesRead;
+            StreamReader reader = new StreamReader(stream);
             Console.WriteLine("GOT CLIENT STREAM");
 
-            using (MemoryStream ms = new MemoryStream()) {
-                Console.WriteLine("USING MEMORY STREAM");
-                Task<int> readTask = stream.ReadAsync(buffer, 0, buffer.Length);
-                    bytesRead = readTask.Result;
-                    while (bytesRead > 0) {
-                        Console.WriteLine("ENTERED WHILE LOOP");
-                        ms.Write(buffer, 0, bytesRead);
-                        readTask = stream.ReadAsync(buffer, 0, buffer.Length);
-                        }
-                    }
-                Console.WriteLine("EXITED WHILE LOOP");
-                string json = Encoding.UTF8.GetString(ms.ToArray());
-                var data = JsonConvert.DeserializeObject<T>(json, settings);
-                Console.WriteLine("CREATED JSON");
-                return data;
+            StringBuilder sb = new StringBuilder();
+            char[] buffer = new char[8192];
+            int numRead;
+            while ((numRead = await reader.ReadAsync(buffer, 0, buffer.Length)) > 0) {
+                string receivedData = new string(buffer, 0, numRead);
+                int delimiterIndex = receivedData.IndexOf("\n\n"); // Assuming "\n\n" is the delimiter
+                if (delimiterIndex >= 0) {
+                    sb.Append(receivedData, 0, delimiterIndex);
+                    break;
+                }
+                sb.Append(receivedData);
             }
+            string json = sb.ToString();
+
+            Console.WriteLine("READ JSON FROM STREAM");
+            var data = JsonConvert.DeserializeObject<T>(json, settings);
+            Console.WriteLine("DESERIALIZED JSON");
+            //check if data type is ShipNode[,]
+            if (data.GetType() == typeof(ShipNode[,])) {
+                Console.WriteLine("DATA TYPE IS SHIPNODE[,]");
+                ShipNode[,] board = (ShipNode[,])Convert.ChangeType(data, typeof(ShipNode[,]));
+                for (int i = 0; i < board.GetLength(0); i++) {
+                    for (int j = 0; j < board.GetLength(1); j++) {
+                        if (board[i, j] != null)
+                            Console.Write($" {board[i, j].Char} ");
+                        else
+                            Console.Write(" . ");
+                    }
+                    Console.WriteLine();
+                }
+            }
+            return data;
         }
 
         static async Task<int> SendData<T>(TcpClient client, T data) {
             Console.WriteLine("SENDING");
             NetworkStream stream = client.GetStream();
+            StreamWriter writer = new StreamWriter(stream);
             string json = JsonConvert.SerializeObject(data, settings);
-            byte[] buffer = Encoding.UTF8.GetBytes(json);
-            await stream.WriteAsync(buffer, 0, buffer.Length);
+            await writer.WriteAsync(json);
+            await writer.WriteAsync("\n\n"); // Assuming "\n\n" is the delimiter
+            await writer.FlushAsync();
             return 0;
         }
     }
 }
+
